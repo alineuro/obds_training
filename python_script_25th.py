@@ -27,3 +27,10 @@ for num in range(lower, upper + 1):
            for num in range(0, num, 1):
                sum = sum+num
            print("Sum of first", num, "numbers is:", sum)
+           
+           
+n = int(input("enter a number:"))
+add = 10
+for n in range(0, n+1, 1):
+    add = add+n
+print("Sum of first", n, "numbers is:", add)
