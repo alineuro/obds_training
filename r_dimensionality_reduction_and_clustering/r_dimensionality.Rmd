@@ -1,0 +1,166 @@
+--title: "R_dimensionality"
+author: "amjad"
+date: "01/03/2021"
+output: html_document
+---
+
+
+```{r}
+logcounts <- read.csv('data/logcounts.csv', row.names = 1)
+View(logcounts)
+```
+
+```{r}
+str(logcounts)
+```
+The class command will tell us the dataframe or matric, but not the contents
+
+```{r}
+logcounts_matrix <- data.matrix(logcounts, rownames.force = NA)
+class(logcounts_matrix)
+```
+
+Question 2. Perform PCA
+
+```{r}
+logcounts_pca <- prcomp(logcounts_matrix, centre = TRUE, scale. = FALSE)
+summary(logcounts_pca)
+```
+```{r}
+str(logcounts_pca)
+```
+Looking at above the rows and columns are the wrong ways. 
+We need clustering on samples not on genes
+i.e. rotation needs to GENEID:PC1 and not cell id 
+So we have to transpose the data (original marix). The rerun the PCA
+
+```{r}
+transposed_logcounts <- t(logcounts_matrix)
+str(transposed_logcounts)
+```
+```{r}
+transposed_logcounts_pca <- prcomp(transposed_logcounts, centre = TRUE, scale. = FALSE)
+str(transposed_logcounts_pca)
+```
+Now the rotation has GENEID:PC1, etc
+We ca view the new matrix coordinates using the the View(variable_name$x)
+
+```{r}
+View(transposed_logcounts_pca$x)
+```
+
+```{r}
+renv::restore()
+```
+
+
+3. Draw a scatterplot of the top two principle components and color by metadata in cell_metadata.csv. Which experimental factors show the largest variance. 
+Sample = Sample - needs to be an exact match (Sample 1 is row from tabel 1 and sample 2 is row from table 2)
+
+```{r}
+cell_metadata <- read.csv("data/cell_metadata.csv")
+
+logcounts_pca_df <- as.data.frame(transposed_logcounts_pca$x[,1:2])
+
+#create a smaple with row names
+logcounts_pca_df$Sample <- rownames(logcounts_pca_df)
+View(logcounts_pca_df)
+
+library(tidyverse)
+cell_counts <- logcounts_pca_df %>%
+    left_join(cell_metadata, by = c("Sample" = "Sample"))
+View(cell_counts)
+```
+
+
+
+```{r}
+library(ggplot2)
+plot1 <- ggplot(data = cell_counts, aes(x=PC1, y=PC2, col = Infection))+
+    geom_point()
+plot1
+```
+Draw a density plot, faceted by time and infection, colored by status, to inspect the variance of each
+experimental factor on the top principal component.
+1/ density plot
+2/ facet time
+3/ facet infection
+
+1/...Below
+
+```{r}
+plot2 <-ggplot(data = cell_counts, aes(x=PC1, col = Infection))+
+    geom_density()
+plot2
+
+```
+Next step with facet time and infection
+
+```{r}
+plot2b <-ggplot(data = cell_counts, aes(x=PC1, col = Status))+
+    geom_density() +
+    facet_grid(rows =vars(Infection), cols = vars(Time)) 
+plot2b
+```
+Draw a bar plot of variance explained by each principal component. How many principal components
+would you keep for downstream analyses?
+
+```{r}
+variance_table <- data.frame(variance =(transposed_logcounts_pca$sdev)^2)
+variance_table$fraction <- variance_table$variance/sum(variance_table$variance)
+PC_numbers <- seq(1, nrow(variance_table))
+variance_table$PC <- PC_numbers
+temp <- variance_table %>%
+    select(PC, variance, fraction)
+View(variance_table)
+
+```
+
+
+
+```{r}
+plot3 <- ggplot(variance_table, aes(x = PC, y=fraction))+
+    geom_col() +
+    xlim(0, 100)
+plot3
+
+```
+
+Find the names of the top genes associated with the top principal components.
+
+```{r}
+variance_table$cum_sum <- cumsum(variance_table$fraction)
+View(variance_table)
+
+Plot4 <- ggplot(variance_table, aes(x = PC, y = cum_sum))+
+    geom_col() +
+    xlim(0, 100)
+Plot4
+```
+
+Line plot of above
+
+
+```{r}
+Plot4b <- ggplot(variance_table, aes(x = PC, y = cum_sum))+
+    geom_line() +
+    xlim(0, 100)
+Plot4b
+```
+Visualise the gene expression value of the gene with the highest loading for PC1 as color on a scatter
+plot of PC1 and PC2. What do you observe?
+
+```{r}
+gene_influence <- as.data.frame(logcounts_pca$rotation)
+gene_influence$gene_ID <- rownames(gene_influence)
+gene_influence <- gene_influence %>%
+    arrange(desc(PC1)) %>%
+    select(gene_ID, PC1)
+View(gene_influence)
+```
+
+
+```{r}
+
+```
+

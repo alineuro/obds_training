@@ -1,0 +1,132 @@
+---
+title: "R_MLearning"
+author: "amjad"
+date: "02/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Fit a linear machine learning model to chickweight to measure the effect of weight and diet. 
+
+Which diet leads to the fastest increase in body weight?
+How much does weight increase per unit of Time for the top diet?
+Does the top diet drive an increase in body weight that is signicantly faster than the next best diet?
+
+
+```{r}
+library(tidyverse)
+data("ChickWeight")
+```
+
+There are 4 diets. 
+```{r}
+View(ChickWeight)
+lm(weight ~ Time + Diet, ChickWeight)
+
+```
+
+
+```{r}
+ggplot(ChickWeight, aes(Time, weight, color=Diet)) +
+    geom_point()+
+    stat_smooth(method='lm')
+```
+Below we are predicting wieght over time without any effect of diet. 
+So at time 0 they are 27.467 and for every unit of time they gain 8.803g. Unit of time = 1 day. 
+
+```{r}
+lm(weight ~ Time, ChickWeight)
+```
+Plot above on a graph (Weight vs time). We can see 0 - 27.467
+
+```{r}
+ggplot(ChickWeight, aes(Time, weight)) +
+    geom_point()+
+    stat_smooth(method='lm')
+```
+Now calculate if they will gain 8.8g i.e. intercept. So we use geom_abline and use our values. This should fit a line on the ggplot line
+
+```{r}
+ggplot(ChickWeight, aes(Time, weight)) +
+    geom_point()+
+    stat_smooth(method='lm')
+    geom_abline(slope=8.803, intercept=27.467)
+```
+
+Now check weight with diet
+```{r}
+lm(weight ~ Diet, ChickWeight)
+```
+Interpretation of above
+A chickweight on diet 1 is on average 102.65g irrespective of time, at any time between day 1 to 25. 
+A chickweight on diet 2 is on average 20g higher than diet 1. 
+A chickweight on diet 3 is on average 40g higher than diet 1.
+
+Weight vs diet graph
+It uses diet one as the intercept
+
+```{r}
+ggplot(ChickWeight, aes(Diet, weight)) +
+    geom_boxplot()+
+    geom_point()
+```
+Starting to build model
+
+```{r}
+lm(formula = weight ~ Time * Diet, data = ChickWeight)
+```
+30.9310 is interceot for diet 1, diet 2 on average has 2.2g less at time 0. 
+-12.68 is intercept for diet 3 below diet 1
+Time:Diet3 is the change in weight relative to diet 1
+Time:Diet is effectively the slope of gain. 
+
+```{r}
+ggplot(ChickWeight, aes(Time, weight, color=Diet)) +
+    geom_point()+
+    stat_smooth(method='lm')+
+```
+Diet 3 leads to the fastest incraese in body weight (Time:Diet3)
+
+How much doe sthe weight incraese per unit of TIme for the top diet?
+- Time diet 1(6.8418) + time diet 3 (4.5811) = 11.4229
+Time diet 1 is the base line incraese for all diets. Their values are in addition to this. 
+
+Intercept for diet 3 = intercept diet 1 - diet 3 (30 - 12)
+
+```{r}
+ggplot(ChickWeight, aes(Time, weight, color=Diet)) +
+    geom_point()+
+    stat_smooth(method='lm')+
+    geom_abline(slope=11.4229, intercept = 30.9310 - 12.6807)
+```
+```{r}
+chickweight_lm_fit <-  lm(formula = weight ~ Time * Diet, data = ChickWeight)
+summary(chickweight_lm_fit)
+```
+
+Does the top diet drive an incraes in body weight that is significantly faster than the next best diet?
+
+
+Now compare to diets to diet 4. NOte the reference level is only compared to 0. 
+```{r}
+ChickWeight$Diet <- relevel(ChickWeight$Diet, "4")
+chickweight_lm_fit <-  lm(formula = weight ~ Time * Diet, data = ChickWeight)
+summary(chickweight_lm_fit)
+```
+
+(Intercept)  30.7921     5.9209   5.201 2.77e-07 ***
+Time          9.7144     0.4670  20.802  < 2e-16 ***
+
+ABOVE TWO ARE COMPARING DIET 4 TO 0
+THE REMAINING LINES WITHIN THE DATA COMPARE DIETS 1-3 WITH 4. 
+
+```{r}
+predict(chickweight_lm_fit, tibble(Time = 5, Diet = '3'))
+```
+
+To calculate the weight of chick 3 on day 5
+predict(chickweight_lm_fit, tibble(Time = 5, Diet = '3'))
+

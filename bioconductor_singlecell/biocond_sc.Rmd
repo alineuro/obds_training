@@ -1,0 +1,388 @@
+---
+title: "Bioconductor_singlecell"
+author: "amjad"
+date: "09/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Websites
+#https://bioconductor.org/packages/release/bioc/vignettes/DropletUtils/inst/doc/DropletUtils.html
+#https://bioconductor.riken.jp/packages/3.9/bioc/vignettes/scater/inst/doc/vignette-intro.html#creating-a-singlecellexperiment-object
+#https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/scater/scater_01_qc.html#MitoRibo_filtering
+#https://bioconductor.org/packages/devel/bioc/vignettes/scater/inst/doc/overview.html#3_Visualizing_expression_values
+
+#Exercise 1Import the ltered matrix into R; use DropletUtils
+#So first load Dropletutils
+```{r}
+library(DropletUtils)
+sce <- read10xCounts("Data/filtered_feature_bc_matrix")
+```
+
+#Note: use the samples argument of the DropletUtils::read10xCounts() function to give a convenient
+name to each sample. Check the difference without using the samples argument.
+Print a summary representation of the object. What can you tell about the contents of the object?
+What can you tell from the object metadata?
+Note: slots of SummarizedExperiment objects are typically accessed using functions of the same name, e.g.
+metadata() .
+
+
+```{r}
+temp <- as.data.frame(colData(sce))
+length(temp)
+```
+#Create a seq of numbers from 1 to the number of columns in size
+```{r}
+cell_names <- c(seq(1, ncol(sce)))
+#add cell infront of each number
+sample_ID <- paste0("Cell", seq(1, ncol(sce)))
+sce <- read10xCounts("Data/filtered_feature_bc_matrix", sample.names = sample_ID)
+#view the output
+View(as.data.frame(colnames(sce)))
+
+sce <- read10xCounts("Data/filtered_feature_bc_matrix", sample.names = 'pbmc')
+View(as.data.frame(colnames(sce)))
+
+#TO look at the struture
+sce
+dim(sce)
+
+```
+So there are 1221 cells and 33538 genes
+#Exercise 2
+Compute and visualise quality control metrics; use scater.
+#So we need to load scater
+```{r}
+library(ggplot2)
+library(scater)
+```
+
+```{r}
+addPerCellQC(sce) #returns a data.frame
+#CUrrently subset is NULL. Later we will change to mitochondrial reads. 
+perCellQCMetrics(sce, subset = )
+sce <- addPerCellQC(sce)
+View(as.data.frame(colData(sce)))
+#The percent top 50 is the percentage of all reads that are made of the top 50 gene
+```
+
+https://nbisweden.github.io/workshop-scRNAseq/labs/compiled/scater/scater_01_qc.html#MitoRibo_filtering
+
+## EXERCISE 2: QC
+
+```{r}
+head(rownames(sce))
+rowData(sce)
+```
+
+```{r}
+# Mitochondrial genes
+mito_genes <- rownames(sce)[grep("^MT-", rowData(sce)$Symbol)]
+
+# Ribosomal genes
+ribo_genes <- rownames(sce)[grep("^RP[SL]", rowData(sce)$Symbol)]
+
+# Hemoglobin genes - includes all genes starting with HB except HBP.
+hb_genes <- rownames(sce)[grep("^HB[^(P)]", rowData(sce)$Symbol)]
+
+View(as.data.frame(colData(sce)))
+
+sce <- addPerCellQC(sce, flatten = T, subsets = list(mt = mito_genes, hb = hb_genes, 
+    ribo = ribo_genes))
+View(as.data.frame(colData(sce)))
+
+```
+
+##Visualise Quality Metrics
+Use ggplot
+histogram of mitochondiral genes - P1
+```{r}
+p1 <- ggplot(as.data.frame(colData(sce)), aes(x = subsets_mt_percent))+
+    geom_histogram()+
+    geom_vline(xintercept = c(2500, 20000))
+```
+plot grid allows us to have multiple graphs in the same screen. 
+usiign cowplot
+
+```{r}
+p2 <- ggplot(as.data.frame(colData(sce)), aes(x = sum, y = detected))+
+    geom_point()
+
+p3 <- ggplot(as.data.frame(colData(sce)), aes(x = sum))+
+    geom_histogram(bins = 500)
+
+p4 <- ggplot(as.data.frame(colData(sce)), aes(x = detected))+
+    geom_histogram(bins = 500)
+
+library(cowplot)
+plot_grid(p1, p2, p3, p4)
+```
+```{r}
+ 
+# how to filter the rows we dont want
+# Ensemble ids = rows
+
+head(rownames(sce))
+head(colnames(sce)) 
+sce_subset <- sce[,colData(sce)$subsets_mt_percent < 15 & colData(sce)$sum >2500 & colData(sce)$sum < 20000 & colData(sce)$detected >1000 & colData(sce)$detected <4250] 
+dim(sce_subset)
+```
+Number of cells has gone down
+so replot one of the histograms. 
+
+```{r}
+perFeatureQCMetrics(sce_subset)
+
+# add mean and detected gnee expression data to the sce_subset
+sce_subset <- addPerFeatureQC(sce_subset)
+rowData(sce_subset)
+
+# need to remove genes that are not detected in any of the cells
+sce_subset <- sce_subset[rowData(sce_subset)$detected >0 ,]
+dim(sce_subset)
+```
+So now we have removed the number of genes. 
+
+Next step Normalisation
+Exercise 3
+Convert the counts into normalized expression values to eliminate cell-specic biases (e.g., in capture
+efciency); use scater and/or scran.
+Note: use scater::logNormCounts() to compute log-normalised counts. What is the return value? Where
+can you nd the normalised counts?
+
+#Use Scran
+#Use computesumfactors
+
+```{r}
+library(scran)
+View(sce)
+sce_subset <- computeSumFactors(sce_subset)
+sce_subset <- logNormCounts(sce_subset)
+assayNames(sce_subset)
+```
+
+Plot the variance against the mean of each gene
+Delayed array allows fast calculations. 
+```{r}
+x <- DelayedArray(assay(sce_subset, "counts"))
+#plot_data <- tibble(mean = log1p(DelayedMatrixStats::rowMeans2(x)),
+#variance = log1p(DelayedMatrixStats::rowVars(x)))
+mean <- DelayedMatrixStats::rowMeans2(x)
+variance <- DelayedMatrixStats::rowVars(x)
+#We now have 2 vectors of mean and variance each
+df <- data.frame(mean = mean, variance = variance)
+plot5 <- ggplot (df, aes(x = log2(mean+1), y = log2(variance+1)))+
+    geom_point()
+plot5
+```
+
+```{r}
+x <- DelayedArray(assay(sce_subset, "logcounts"))
+#plot_data <- tibble(mean = log1p(DelayedMatrixStats::rowMeans2(x)),
+#variance = log1p(DelayedMatrixStats::rowVars(x)))
+mean <- DelayedMatrixStats::rowMeans2(x)
+variance <- DelayedMatrixStats::rowVars(x)
+#We now have 2 vectors of mean and variance each
+df <- data.frame(mean = mean, variance = variance)
+plot6 <- ggplot (df, aes(x = mean, y = variance))+
+    geom_point()
+plot6
+```
+
+Exercise 4
+Select features for downstream analyses, e.g. highly variable genes; use scran.
+1. Use scran::modelGeneVar() to model the variance of the log-expression proles for each gene.
+What is the output?
+2. Visualise the relation between the mean expression of each gene and the total / biological / technical
+variance of each gene.
+Note: How do you interpret those different values?
+Use scran::getTopHVGs() to identify highly variable genes.
+Note: what is the output? How many genes do you identify? Where are those genes located in the meanvariance plot? What happens to this plot if you set more stringent thresholds to dene highly variable
+genes?
+
+1.
+```{r}
+gene_variance.df <- scran::modelGeneVar(sce_subset)
+View(gene_variance.df)
+```
+2.
+```{r}
+View(as.data.frame(gene_variance.df))
+gene_variance.df <- as.data.frame(gene_variance.df)
+
+plot7 <- ggplot(gene_variance.df, aes(x = mean, y = total))+
+    geom_point()
+plot7
+
+plot8 <- ggplot(gene_variance.df, aes(x = mean, y = bio))+
+    geom_point()
+plot8
+
+plot9 <- ggplot(gene_variance.df, aes(x = mean, y = tech))+
+    geom_point()
+plot9
+
+plot_grid(plot7, plot8, plot9)
+```
+scran::getTopHVGs()
+```{r}
+gene_names <- scran::getTopHVGs(gene_variance.df, var.field = 'bio', prop = .1)
+
+```
+
+
+
+
+
+Exercise 5
+Use scater::runPCA to compact the data and further reduce noise.
+Note: only give the set of highly variable genes to the scater::runPCA() function, to save time, memory,
+and to focus on biologically variable genes in the data set.
+Continue with UMAP or t-SNE.
+
+```{r}
+set.seed(10)
+sce_subset <- scater::runPCA(sce_subset, subset_row = gene_names, ncomponents = 50)
+reducedDim(sce_subset)
+reducedDimNames(sce_subset)
+
+#sce_subset <- scater::runUMAP(sce_subset, ncomponents = 5)
+
+
+percent.var <- attr(reducedDim(sce_subset), "percentVar")
+df <- data.frame(x = seq(1,50), y = percent.var)
+plot10 <- ggplot (df, aes(x=x, y=y))+
+    geom_col()
+plot10
+```
+#Decided on ten compenents based on above graph
+```{r}
+sce_subset <- scater::runUMAP(sce_subset, pca = 12)
+reducedDimNames(sce_subset)
+```
+Visualise the layout of cells produced by each of those dim
+
+```{r}
+plotReducedDim(sce_subset, dimred = "UMAP", colour_by = "subsets_mt_percent")
+```
+
+```{r}
+plotPCA(sce_subset, ncomponents = 4, colour_by = "subsets_mt_percent")
+```
+
+use scran::denoisePCA() to remove principal components that correspond to technical noise, and
+compare downstream t-SNE or UMAP with those obtained before de-noising.
+
+```{r}
+scran::denoisePCA() 
+```
+
+denoisePC is not recommended if you use modelGeneVar
+
+Exercise 6
+
+Use scran::getClusteredPCs() to cluster cells after using varying number of PCs and pick the
+number of PCs using a heuristic based on the number of clusters.
+So this willl advise which is the best number of PCs to use for your clustering. 
+It will maximise the number of clusters as long as its not more than 1 greater than the number of PCs.
+
+We need a numeric matrix of PCS: reducedDimNames(sce_subset)
+
+```{r}
+
+
+head(reducedDim(sce_subset))
+clustered_PCs <- getClusteredPCs(reducedDim(sce_subset))
+metadata(clustered_PCs)$chosen
+```
+#Use scran::buildSNNGraph() and igraph::cluster_louvain() with the "ideal" number of PCs.
+
+So we do clustering on the 12 PCs
+First buld the graph(snnGraph) and then split into clusters (cluster_louvain)
+
+```{r}
+snngraph <- buildSNNGraph(sce_subset, d = 12)
+snngraph
+```
+We now put the above into the cluster_louvain 
+The membership tells us which cluster is used for each cell. We can check if the length of the membershsip is the same as the dim(Sce_subset)
+```{r}
+library(igraph)
+louvain <- cluster_louvain(snngraph)
+head(membership(louvain))
+cluster_identity <- as.factor(membership(louvain)) #tells it a factor with 9 levels
+length(membership(louvain))
+
+dim(sce_subset)
+```
+#Visualise the assigned cluster on your preferred dimensionality reduction layout.
+# We will make t-SNE to compare for fun. We have previously made a umap. (I have reran umap with 12 pcs)
+
+```{r}
+sce_subset <- runTSNE(sce_subset, pca = 12)
+reducedDimNames(sce_subset)
+```
+We need to add the cluster identities into the sce_subset
+We can add it as a column to our colData
+```{r}
+colData(sce_subset)$cluster_identity <- cluster_identity
+View(colData(sce_subset))
+
+plotReducedDim(sce_subset, dimred = "UMAP", colour_by = "cluster_identity")
+```
+Now plot the TSNE
+```{r}
+plotReducedDim(sce_subset, dimred = "TSNE", colour_by = "cluster_identity", text_by = 'cluster_identity')
+```
+
+## Exercise step 7. Cluster markers. 
+Use scran::findMarkers() to identify markers for each cluster
+This will contain a list for each cluster, which contains a df of the highly expressed. 
+```{r}
+markers <- findMarkers(sce_subset, groups = cluster_identity, test.type = "wilcox")
+# We can get individual lists of the markers using below.
+markers[[1]]
+#But ideally we want all 9 together. So use the combineMarkers function. But this is for pairWise i.e. cluster with all other 8 is what we have done, then 2 with other 8. So not appropriate to use this function. 
+#combineMarkers(markers)
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

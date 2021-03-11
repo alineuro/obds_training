@@ -1,0 +1,78 @@
+---
+title: "R_pathway"
+author: "amjad"
+date: "04/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(clusterProfiler)
+library(org.Mm.eg.db)
+```
+```{r}
+DE_Result <- read.csv("DE_Results.csv")
+DE_Result_padlog2 <- read.csv("DE_Results_padlog2.csv")
+```
+
+
+
+```{r}
+temp <- enrichGO(gene = DE_Result_padlog2$ENSEMBL_ID,
+                 OrgDb = org.Mm.eg.db,
+                 universe = DE_Result$ENSEMBL_ID,
+                 keyType='ENSEMBL',
+                 pvalueCutoff = 0.05,
+                 ont = 'ALL',
+                 qvalueCutoff = 0.10,
+                 readable = T)
+head(summary(temp))
+# Plot
+library(enrichplot)
+upsetplot(temp)
+```
+Now do GSEA
+Ranke gene list in DE-Result
+Add logFC * log10pvalue
+
+
+
+```{r}
+# Add a new column of log2FC*log10(padj+1)
+DE_Result$log2FC_log10padj <- DE_Result$log2FoldChange*-log10(DE_Result$padj+1E-6)
+
+# Sort the genes by log2FC*log10pvalue
+DE_Result_sort <- DE_Result[order(DE_Result$log2FC_log10padj,decreasing = TRUE),]
+
+library(ggplot2)
+plot <- ggplot(DE_Result_sort, aes(x = log2FoldChange, y = -log10(padj+1E-6), color = log2FC_log10padj))+
+    geom_point()
+plot
+
+
+DE_Result_sort2 = DE_Result_sort$log2FoldChange
+names(DE_Result_sort2) = as.character(DE_Result_sort[,3])
+head(DE_Result_sort2)
+tail(DE_Result_sort2)
+DE_Result_sort2 = sort(DE_Result_sort2, decreasing = TRUE)
+```
+
+
+
+```{r}
+temp <- gseGO(geneList = DE_Result_sort2, 
+             ont ="BP", 
+             keyType = "ENSEMBL", 
+             nPerm = 10000, 
+             minGSSize = 10, 
+             maxGSSize = 500, 
+             pvalueCutoff = 0.05, 
+             verbose = TRUE, 
+             OrgDb = org.Mm.eg.db, 
+             pAdjustMethod = "none")
+head(summary(temp))
+```
+

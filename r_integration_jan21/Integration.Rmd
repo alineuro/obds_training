@@ -1,0 +1,256 @@
+---
+title: "Integration"
+author: "amjad"
+date: "11/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import the two data sets
+# How to load RDS file
+```{r}
+pbmcv2 <- readRDS("Data/pbmcv2_filtered.rds")
+pbmcv3 <- readRDS("Data/pbmcv3_filtered.rds")
+
+```
+#What are the two file types
+```{r}
+pbmcv2
+```
+
+```{r}
+pbmcv3
+```
+Note they have different features (genes i.e. 13070 vs 15246)
+
+#Create a seurat object for each of the above 2 files. We do not need to do this as both are seurat objects. So we can merge 
+
+
+```{r}
+pbmc.combined <- merge(x = pbmcv2, y = pbmcv3, add.cell.ids = c("v2", "v3"), project = "PBMC")
+pbmc.combined
+```
+
+```{r}
+union_genes <- unique(c(rownames(pbmcv2), rownames(pbmcv3)))
+head(union_genes)
+identical(union_genes, rownames(pbmc.combined))
+```
+#3. On the merged Seurat object, perform the general steps of a Seurat analysis workflow:
+- Normalisation
+- Finding variable genes
+- Scaling
+- PCA
+- Clustering
+- UMAP
+4. Visualise the identified clusters on the UMAP
+5. Colour the cells in the UMAP by the original dataset from which they came i.e. v2 or v3
+- Do you see any batch effects?
+
+Use the seural vignetes
+```{r}
+pbmc.combined[["percent.mt"]] <- PercentageFeatureSet(pbmc.combined, pattern = "^MT-")
+pbmc.combined
+```
+
+
+```{r}
+VlnPlot(pbmc.combined, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+plot1 <- FeatureScatter(pbmc.combined, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(pbmc.combined, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+```
+Normalise the data
+```{r}
+pbmc.combined <- NormalizeData(pbmc.combined, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+Identification of highly variable features
+```{r}
+pbmc <- FindVariableFeatures(pbmc.combined, selection.method = "vst", nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(pbmc), 10)
+
+# plot variable features with and without labels
+plot3 <- VariableFeaturePlot(pbmc)
+plot4 <- LabelPoints(plot = plot3, points = top10, repel = TRUE)
+plot3 + plot4
+```
+
+Scale the data
+```{r}
+all.genes <- rownames(pbmc)
+pbmc <- ScaleData(pbmc, features = all.genes)
+```
+
+
+
+```{r}
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc))
+```
+
+```{r}
+print(pbmc[["pca"]], dims = 1:5, nfeatures = 5)
+```
+
+```{r}
+VizDimLoadings(pbmc, dims = 1:2, reduction = "pca")
+```
+
+```{r}
+DimPlot(pbmc, reduction = "pca")
+```
+Kevins code for bonus exercise
+
+```{r}
+library(ggplot2)
+df <- data.frame(
+pbmc.combined@reductions$pca@cell.embeddings[, 1:2],
+ident = pbmc.combined@meta.data$orig.ident
+)
+df <- df[sample(nrow(df)), ]
+dimplot_ggplot2 <- ggplot(df, aes(PC_1, PC_2, color = ident)) +
+geom_point() +
+theme_classic()
+dimplot_ggplot2
+dimplot_seurat + dimplot_ggplot2
+```
+
+
+```{r}
+DimHeatmap(pbmc, dims = 1, cells = 500, balanced = TRUE)
+```
+
+```{r}
+DimHeatmap(pbmc, dims = 1:9, cells = 500, balanced = TRUE)
+```
+Determine dimensionality
+```{r}
+pbmc <- JackStraw(pbmc, num.replicate = 100)
+pbmc <- ScoreJackStraw(pbmc, dims = 1:20)
+```
+```{r}
+JackStrawPlot(pbmc, dims = 1:15)
+```
+
+```{r}
+ElbowPlot(pbmc)
+```
+
+Cluster the cells
+
+```{r}
+pbmc <- FindNeighbors(pbmc, dims = 1:10)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+```
+
+```{r}
+# Look at cluster IDs of the first 5 cells
+head(Idents(pbmc), 5)
+```
+
+##Run non-linear dimensional reduction (UMAP/tSNE)
+
+```{r}
+pbmc <- RunUMAP(pbmc, dims = 1:10)
+```
+4. Visualise the identified clusters on the UMAP
+5. Colour the cells in the UMAP by the original dataset from which they came i.e. v2 or v3
+- Do you see any batch effects?
+```{r}
+DimPlot(pbmc, reduction = "umap", label = TRUE)
+```
+
+
+#color by batch v2 and v3
+
+```{r}
+#group by allows us to color by batch/group
+colnames(pbmc@meta.data)
+DimPlot(pbmc, reduction = "umap", group.by = 'orig.ident', label = TRUE)
+
+```
+Above graph shows there is batch effect. So naive analysis can't continue any further. 
+
+
+
+#EXERCISE 2
+
+We need to split into list first
+https://satijalab.org/seurat/archive/v3.0/integration.html
+
+
+```{r}
+pbmc.list <-  SplitObject(pbmc, split.by = "orig.ident")
+names(pbmc.list)
+
+features <- SelectIntegrationFeatures((object.list = pbmc.list))
+anchors <- FindIntegrationAnchors(object.list = pbmc.list, anchor.features = features)
+anchors
+
+pbmc.integrated <- IntegrateData(anchorset = anchors)
+
+```
+```{r}
+library(Seurat)
+library(SeuratData)
+library(patchwork)
+
+DefaultAssay(pbmc.integrated) <- "integrated"
+
+pbmc.integrated <- ScaleData(pbmc.integrated, npcs=30, verbose = FALSE)
+pbmc.integrated <- RunPCA(pbmc.integrated, features = VariableFeatures(object = pbmc.integrated))
+
+```
+
+```{r}
+library(ggplot2)
+library(cowplot)
+```
+
+
+```{r}
+# Run the standard workflow for visualization and clustering
+pbmc.integrated <- ScaleData(pbmc.integrated, verbose = FALSE)
+pbmc.integrated <- RunPCA(pbmc.integrated, npcs = 30, verbose = FALSE)
+pbmc.integrated <- RunUMAP(pbmc.integrated, reduction = "pca", dims = 1:30)
+p1 <- DimPlot(pbmc.integrated, reduction = "umap", group.by = "orig.ident")
+p2 <- DimPlot(pbmc.integrated, reduction = "umap", group.by = "seurat_clusters", label = TRUE, 
+    repel = TRUE) + NoLegend()
+plot_grid(p1, p2)
+```
+https://satijalab.org/seurat/articles/integration_introduction.html
+
+```{r}
+pbmc.integrated <- RunUMAP(pbmc.integrated, reduction = "pca", dims = 1:20)
+pbmc.integrated <- FindNeighbors(pbmc.integrated, reduction = "pca", dims = 1:20)
+pbmc.integrated <- FindClusters(pbmc.integrated, resolution = 0.5)
+```
+
+```{r}
+p1 <- DimPlot(pbmc.integrated, reduction = "umap", group.by = "orig.ident")
+p2 <- DimPlot(pbmc.integrated, reduction = "umap", label = TRUE, repel = TRUE)
+p1 + p2
+```
+
+```{r}
+DefaultAssay(pbmc.integrated) <- "RNA"
+markers <- FindConservedMarkers(pbmc.integrated, ident.1 = 6, grouping.var = "orig.ident", verbose = FALSE)
+head(markers)
+```
+
+
+
+
+
+
+
+
+

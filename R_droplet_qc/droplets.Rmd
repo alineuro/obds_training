@@ -1,0 +1,165 @@
+---
+title: "R_droplet"
+author: "amjad"
+date: "10/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+renv::init()
+BiocManager::install("BiocNeighbours")
+
+After installation of DropletUtils
+#BiocManager::install("DropletUtils")
+
+
+```{r}
+library(DropletUtils)
+```
+
+```{r}
+sce <- read10xCounts("data/pbmc_1k_v3_raw", sample.names = "PBMC")
+sce
+
+View(as.data.frame(colData(sce)))
+```
+Remove empty droplets 
+
+```{r}
+head(assay(sce, "counts"))
+
+#Remove droplets without any count at all
+sums <- colSums(assay(sce, "counts"))
+sce <- sce[, sums >0]
+sce
+```
+
+
+```{r}
+emptyDroplets <- DropletUtils::emptyDrops(assay(sce, "counts"))
+```
+#FDR - false discovery rate. Less than 0.01pval considered to be a cell
+```{r}
+is.cell <- emptyDroplets$FDR <= 0.01
+sum(is.cell, na.rm=TRUE)
+
+table(is.cell)
+```
+
+
+```{r}
+df <- data.frame(librarysize = colSums(assay(sce, "counts")), emptydroplet = is.cell)
+
+#install.packages("ggplot2")
+library(ggplot2)    
+ggplot(df, aes(x = emptydroplet, y = librarysize))+
+geom_point()
+```
+
+
+```{r}
+head(which(is.cell))
+
+# remove FALSE and NA droplets from raw data
+sce <- sce[,which(is.cell)]
+```
+
+```{r}
+sce_filtered <- read10xCounts("data/pbmc_1k_v3_filtered", sample.names = "PBMC")
+sce_filtered
+
+# Filtered has 1222 cells, we have 1206
+```
+```{r}
+# compare cells in raw and filtered
+barcodes_raw <- colData(sce)$Barcode
+barcodes_filtered <- colData(sce_filtered)$Barcode
+
+length(intersect(barcodes_raw, barcodes_filtered))
+```
+
+
+Remove doublets
+
+```{r}
+#install.packages("BiocManager")
+#BiocManager::install("scDbFinder")
+#BiocManager::install("scDblFinder")
+install.packages(scDblFinder)
+library(scDblFinder)
+
+sce <- scDblFinder(sce)
+
+View(as.data.frame(colData(sce)))
+```
+
+Draw a plot comparing doublets with other doublets
+```{r}
+df2 <- data.frame(librarysize= colSums(assay(sce, "counts")), colData(sce)$scDblFinder.class)
+View(df2)
+
+plot2 <- ggplot(df2, aes(x = doublets, y = librarysize))+
+  geom_violin()+
+  geom_point()
+plot2
+                  
+```
+
+```{r}
+head(colData(sce)$scDblFinder.class == "singlet")
+
+sce <- sce[,colData(sce)$scDblFinder.class == "singlet"]
+sce
+```
+
+
+```{r}
+BiocManager:Install("celda")
+library(celda)
+
+sce <- decontX(sce)
+assays(sce)$decontXcounts
+```
+
+Visualise the UMAP layout created by decontC; use plotDimReduceCluster()
+```{r}
+#View(as.data.frame(colData(sce)))
+
+#reducedDimNames(sce)
+
+#plotDimReduceCluster(assays(sce)$decontX_clusters, dim1 = reducedDim(sce)$DecontX_UMAP_1, dim2 = reducedDim(sce)$DecontX_UMAP_2)
+
+reducedDim(sce)
+
+class(sce)
+
+plotDimReduceCluster(colData(sce)$decontX_clusters, dim1 = reducedDim(sce)[,"DecontX_UMAP_1"], dim2= reducedDim(sce)[,"DecontX_UMAP_2"])
+```
+
+Visualize the percentage of contamination estimated by decontX in each cell. Use the
+plotDecontXContamination() function
+
+```{r}
+ggplot_object <- plotDecontXContamination(sce)
+plotDecontXContamination(sce)
+
+```
+
+Visualize the log-normalised expression of marker genes on a UMAP layout faceted by gene; use
+plotDimReduceFeature()
+
+```{r}
+reducedDimNames(sce)
+
+head(rownames(sce))
+
+plotDimReduceFeature(as.matrix(assays(sce)$counts), features = "ENSG00000243485", dim1 = reducedDim(sce)[,"DecontX_UMAP_1"], dim2= reducedDim(sce)[,"DecontX_UMAP_2"])
+```
+
+
+

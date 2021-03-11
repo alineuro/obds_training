@@ -1,0 +1,331 @@
+---
+title: "RNASingleCellSeq"
+author: "amjad"
+date: "08/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Exercises:
+Analyse RNA and protein data using Seurat vignettes – QC,
+normalisation and scaling, dimensionality reduction, clustering
+Additions/adjustments to Seurat vignette:
+• QC plot of nCount_RNA by nFeature_RNA coloured by percent.mt
+(use ggplot2) [this is the total count assigned to each cell, i.e. total genes]
+• Perform initial analysis without filtering for poor quality cells –
+visualise QC parameters on UMAP/tSNE – decide on appropriate
+filtering thresholds [ a naive analysis ot essentially identify what the thresholds are]
+
+• Examine whether clustering is influenced by any of QC metrics –
+reads, genes, percent.mt, cell cycle
+Ø Bar plot of percentage of cells in each cluster in the different phases of the
+cell cycle
+• Assess clustering resolution using clustree
+
+• Compare clustering results following basic normalisation and
+SCTransform normalisation – can you notice any difference?
+• Convert Seurat object into SingleCellExperiment object and use this
+to generate some QC plots in Scater
+• Perform pathway analysis on the cluster markers
+• Run SingleR – reference-based cell annotation
+
+Load seurat and the data
+
+#barcodes <- read.table("filtered_feature_bc_matrix/barcodes.tsv.gz", sep = "\t")
+#features <- read.table("filtered_feature_bc_matrix/features.tsv.gz", sep = "\t")
+#matrix <- read.table("filtered_feature_bc_matrix/matrix.mtx.gz", sep = "\t")
+
+I thought above but we did not use it
+
+```{r}
+library(Seurat)
+```
+
+We also need the following packages. 
+```{r}
+library(ggplot2)
+library(patchwork)
+```
+
+Read in the datasets
+We use the example from
+https://satijalab.org/seurat/articles/multimodal_vignette.html#loading-data-from-10x-multi-modal-experiments-1
+
+dim(seurat.data) - gives a list but does not have dimensions so gives NULL
+
+seurat.data - gives a names list ($ means a list)
+```{r}
+seurat.data <- Read10X(data.dir = "filtered_feature_bc_matrix/")
+#rownames(x = pbmc10k.data[["Antibody Capture"]]) <- gsub(pattern = "_[control_]*TotalSeqB", #replacement = "", 
+ #   x = rownames(x = pbmc10k.data[["Antibody Capture"]]))
+dim(seurat.data)
+seurat.data
+```
+
+Now that we know it is a list, we can use names
+```{r}
+names(seurat.data)
+length(seurat.data)
+
+#We can now select items
+head(seurat.data$'Gene Expression')
+tail(seurat.data$'Antibody Capture')
+
+#call the function class
+class(seurat.data)
+class(seurat.data$'Antibody Capture')
+
+#dgCMatrix is an efficient way to store a large matrix
+```
+We can't use a list in seurat. 
+SO lets inspect the row names. 
+
+```{r}
+rownames(x = seurat.data[["Antibody Capture"]])
+```
+So lets take the second line from the vigneete and adapt it to our data set
+So doing the below gets rid of the names after the _ from the list above. 
+```{r}
+rownames(x = seurat.data[["Antibody Capture"]]) <- gsub(pattern = "_[control_]*TotalSeqB", replacement = "", 
+    x = rownames(x = seurat.data[["Antibody Capture"]]))
+rownames(x = seurat.data[["Antibody Capture"]])
+```
+Now create sueurat object
+We will perform the intital analysis with everything intially
+This assay is RNA
+
+```{r}
+seurat_all_rna <- CreateSeuratObject(counts = seurat.data[["Gene Expression"]], min.cells = 0, min.features = 0, project = 'pbmc5kdataset')
+seurat_all_rna
+```
+
+```{r}
+head(colnames(seurat_all_rna))
+dim(seurat_all_rna@meta.data)
+
+head(seurat_all_rna@meta.data)
+table(seurat_all_rna@meta.data$orig.ident)
+
+Idents(seurat_all_rna)
+head(Idents(seurat_all_rna))
+```
+
+```{r}
+adt_assay <- CreateAssayObject(seurat.data[["Antibody Capture"]][, colnames(seurat_all_rna)])
+adt_assay
+class(adt_assay)
+```
+We now want to assign this assay pobject into the seurat_all_rna object
+```{r}
+seurat_all_rna[["ADT"]] <- adt_assay
+seurat_all_rna
+# the above has incraesed the number of features with two assays to 33570 from 33538. 33538 come from the RNA assay. 
+
+
+#Data before normalisation
+head(seurat_all_rna@meta.data)
+```
+so 
+```{r}
+seurat_all_rna <- NormalizeData(seurat_all_rna)
+seurat_all_rna
+```
+Normalise data calculated the nCount and nFeature_ADT. 
+```{r}
+head(seurat_all_rna@meta.data)
+```
+
+```{r}
+seurat_all_rna@assays$RNA@counts
+seurat_all_rna@assays$RNA@data
+identical(seurat_all_rna@assays$RNA@counts, seurat_all_rna@assays$RNA@data)
+seurat_all_rna@assays$ADT@counts
+seurat_all_rna@assays$ADT@data
+identical(seurat_all_rna@assays$ADT@counts, seurat_all_rna@assays$ADT@data)
+```
+Normalise the ADT assay 
+```{r}
+seurat_all_rna <- NormalizeData(seurat_all_rna, assay = "ADT", normalization.method = "CLR")
+seurat_all_rna
+```
+# Above we have done creation of the object and normalisation. 
+Now do the QC plot - but we dont have the %mitochondrial. 
+As we havent told seurat where this is. 
+
+
+Below will calculate the percentage
+printing shows it is data fram with 1 column
+So in first cell almost 12% of counts come from counts
+```{r}
+
+mt.percent <- PercentageFeatureSet(seurat_all_rna, pattern ="^MT-")
+class(mt.percent)
+mt.percent
+
+```
+
+```{r}
+seurat_all_rna[["percent.mt"]] <- mt.percent
+seurat_all_rna
+head(seurat_all_rna@meta.data)
+
+```
+QC plot of nCount_RNA by nFeature_RNA coloured by percent.mt
+(use ggplot2)
+
+```{r}
+library(ggplot2)
+ggplot(seurat_all_rna@meta.data, aes(nCount_RNA, nFeature_RNA, color = percent.mt))+
+    geom_point()
+```
+https://satijalab.org/seurat/articles/pbmc3k_tutorial.html
+```{r}
+VlnPlot(seurat_all_rna, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r}
+seurat_all_rna <- subset(seurat_all_rna, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20)
+
+```
+
+```{r}
+seurat_all_rna <- FindVariableFeatures(seurat_all_rna)
+seurat_all_rna
+```
+
+```{r}
+length(VariableFeatures(seurat_all_rna))
+top10 <- head(VariableFeatures(seurat_all_rna))
+top10
+
+#plot variable with and without labels
+plot1 <- VariableFeatures(seurat_all_rna)
+plot1
+```
+
+We need to scale the genes to run the PCA
+https://satijalab.org/seurat/articles/pbmc3k_tutorial.html
+
+```{r}
+all.genes <- rownames(seurat_all_rna)
+#head(all.genes)
+seurat_all_rna <- ScaleData(seurat_all_rna, features = all.genes)
+seurat_all_rna
+```
+
+```{r}
+DefaultAssay(seurat_all_rna)
+seurat_all_rna <- RunPCA(seurat_all_rna)
+
+```
+
+
+```{r}
+seurat_all_rna
+```
+
+```{r}
+seurat_all_rna[["pca"]]
+```
+
+```{r}
+print(seurat_all_rna[["pca"]], dims = 1:5, nfeatures = 5)
+```
+```{r}
+seurat_all_rna@reductions$pca
+```
+```{r}
+DimPlot(seurat_all_rna, reduction = 'pca', dims = c(1,2))
+```
+```{r}
+#Do a PC plot for each of the principle compoenents 30
+DimHeatmap(seurat_all_rna, dims = 30)
+```
+```{r}
+#Do a PC plot for each of the principle compoenents 1 -6
+DimHeatmap(seurat_all_rna, dims = 1)
+DimHeatmap(seurat_all_rna, dims = 2)
+DimHeatmap(seurat_all_rna, dims = 3)
+DimHeatmap(seurat_all_rna, dims = 4)
+DimHeatmap(seurat_all_rna, dims = 5)
+DimHeatmap(seurat_all_rna, dims = 6)
+
+```
+
+An alternative to the above is JackStraw Analysis (to do all in one)
+However this is slower
+
+Lets try the elbowplot
+
+```{r}
+ElbowPlot(seurat_all_rna)
+```
+Shows below 10 (pc <10) are more significant
+Now we can cluster the cells. 
+#We have imported the RNA + prtein data, normlaised, found variable features, scaled it, run PCA. 
+#Now we can cluster the cells. 
+Cluster will find for each point which are neighbours. 
+
+in find neighbours dims is the number of pca dimensions to use.
+```{r}
+seurat_all_rna <- FindNeighbors(seurat_all_rna, dims = 1:13)
+seurat_all_rna
+```
+The number of clusters we find is not related to the pca dimensions 
+```{r}
+seurat_all_rna <- FindClusters(seurat_all_rna, resolution = 0.8, verbose = FALSE)
+seurat_all_rna <- FindClusters(seurat_all_rna, resolution = 1.2, verbose = FALSE)
+```
+
+```{r}
+View(seurat_all_rna@meta.data)
+```
+
+```{r}
+DimPlot(seurat_all_rna, reduction = 'pca', dims = c(1,2))
+```
+```{r}
+head(Idents(seurat_all_rna))
+```
+
+```{r}
+seurat_all_rna <- RunUMAP(seurat_all_rna, reduction = 'pca', dims = 1:13)
+seurat_rna_all
+
+DimPlot(seurat_all_rna, reduction = 'umap', dims = c(1,2), group.by = 'RNA_snn_res.0.8')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

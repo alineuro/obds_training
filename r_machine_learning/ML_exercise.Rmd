@@ -1,0 +1,70 @@
+---
+title: "R_MLexercise"
+author: "amjad"
+date: "02/03/2021"
+output: html_document
+---
+```{r}
+library(caret)
+```
+
+Get familiar with the data set. What are rows? What are columns?
+
+```{r}
+data(iris)
+View(iris)
+```
+
+Use the caret::featurePlot() function to visualise species and measurements. Try the different options
+for the plot argument.
+
+featurePlot(
+  x,
+  y,
+  plot = if (is.factor(y)) "strip" else "scatter",
+  labels = c("Feature", ""),
+
+```{r}
+caret::featurePlot(x=iris[,1:4],y=iris$Species, plot='density', auto.key = list(columns = 3))
+
+```
+Partition the data set into one training and one test set. Make sure the two sets are balanced with
+respect to Species .
+
+```{r}
+set.seed(998)
+inTraining <- createDataPartition(iris$Species, p = .75, list = FALSE)
+training <- iris[ inTraining,]
+testing <- iris[-inTraining,]
+```
+
+```{r}
+library(e1071)
+fitControl <- trainControl(method = "boot",number = 5)
+knnFit <- train(Species ~ ., data = training, method = "knn", trControl = fitControl, tuneGrid = data.frame(k = c(1,2,5,10,20)))
+ggplot(knnFit)
+```
+```{r}
+library(kernlab)
+fitControl <- trainControl(method = "boot",number = 5)
+GPRFit <- train(Species ~ ., data = training, method = 'gaussprLinear', trControl = fitControl)
+ggplot(GPRFit)
+```
+
+
+```{r}
+knnPred <- predict(knnFit, newdata = testing)
+```
+
+```{r}
+confusionMatrix(data = knnPred, testing$Species)$table
+```
+
+```{r}
+confusionMatrix(data = knnPred, testing$Species)$overall["Accuracy"]
+
+```
+
+
+
+

@@ -1,0 +1,22 @@
+#Exercise: Testing and Multiple Test correction
+#How to load data
+#logcounts.csv
+
+logcounts <- read.csv("data/logcounts.csv", row.names = 1)
+View(logcounts)
+
+cell_metadata <- read.csv("data/cell_metadata.csv", row = 1)
+View(cell_metadata)
+
+cell_group <- cell_metadata$Infection
+gene1 <- logcounts[1,]
+
+logcounts <- t(logcounts)
+
+all(row.names(logcounts) == row.names(cell_metadata))
+cell_names <- row.names(logcounts)
+cell_metadata <- cell_metadata[cell_names,]
+
+data.combined <- cbind(cell_metadata, logcounts)
+View(data.combined)
+t.test()

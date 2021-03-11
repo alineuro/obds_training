@@ -1,0 +1,268 @@
+---
+title: "DSeq"
+author: "amjad"
+date: "03/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(DESeq2)
+```
+Read in the files
+
+```{r}
+counts_table <- read.table("data/obds_countstable.tsv.gz", header = TRUE, row.names = 1)
+```
+
+
+```{r}
+sample_table <- read.table("data/obds_sampletable.tsv", header = TRUE, row.names = 1, sep = "\t")
+```
+
+Now convert them into a format for generating DSEqData set - need to use the command :
+##DESeqDataSetFromMatrix(countData, colData, design, tidy = FALSE,
+##ignoreRank = FALSE, ...)
+Convert df to matrix
+coldata = sample table
+
+First step to using this command:
+countData - making a matrix for DESeqDataSetFromMatrix
+```{r}
+counts_table <- as.matrix(counts_table)
+View(counts_table)
+```
+We need to run the replicate number from the sample table row sample title
+```{r}
+sample_table <- sample_table %>% separate(sample_title, into = c("egr", "ko", "cell", "replicate"), sep = "_" )%>%
+unite("egr_ko_cell", egr, ko, cell, sep = "_")
+```
+
+Need to make the egr_ko_cell row into a factor and set the levels
+
+```{r}
+sample_table$egr_ko_cell <- factor(sample_table$egr_ko_cell, levels = c("Egr2/3_DKO_CD8", "Egr2/3_DKO_CD4", "Egr2_Kin_CD8", "Egr2_Kin_CD4"))
+```
+
+```{r}
+dds <- DESeqDataSetFromMatrix(counts_table, sample_table, ~egr_ko_cell)
+
+```
+##Access the design formula, counts matrix and sample info from the dds
+
+Design formula
+```{r}
+dds
+show(dds)
+str(dds)
+head(assays(dds)$count) #Is the counts matrix
+assays(dds)
+```
+Show the design formula. 
+```{r}
+colData(dds)
+```
+#Calculate the size factors for each sample - estimatesizefactors
+## S4 method for signature 'DESeqDataSet'
+estimateSizeFactors(object, type = c("ratio",
+  "poscounts", "iterate"), locfunc = stats::median, geoMeans,
+  controlGenes, normMatrix, quiet = FALSE)
+#Put the size factors into the previous dds object
+This is where we are normalising for library size, RNA composition etc. 
+```{r}
+dds <- estimateSizeFactors(dds)
+sizeFactors(dds)
+```
+Generate a bar plot of the size factors for each sample, coloured by
+condition/group.
+Make a new df with all this info
+
+frame(..., row.names = NULL, check.rows = FALSE,
+           check.names = TRUE, fix.empty.names = TRUE,
+           stringsAsFactors = default.stringsAsFactors())
+```{r}
+row.names(colData(dds))
+
+plot_table <- data.frame(sample = row.names(colData(dds)), sizeFactors(dds), colData(dds)$egr_ko_cell)
+condition=colData(dds)$egr_ko_cell
+View(plot_table)
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(plot_table, aes(x = sample, y = sizeFactors.dds., fill=condition))+
+    geom_col()+
+    theme(axis.text.x = element_text(angle = 30, hjust = 1))
+```
+Obtain dispersion estimates for each gene – estimateDispersions()
+Ø Plot the per-gene dispersion estimates (DESeq2 has a helper function for
+this) plotDispEsts(dds)
+
+## S4 method for signature 'DESeqDataSet'
+estimateDispersions(object,
+  fitType = c("parametric", "local", "mean"), maxit = 100,
+  useCR = TRUE, weightThreshold = 0.01, quiet = FALSE,
+  modelMatrix = NULL, minmu = 0.5)
+
+```{r}
+dds <- estimateDispersions(dds)
+head(assays(dds)$mu)
+head(dispersions(dds))
+
+plotDispEsts(dds)
+```
+
+
+Perform the Wald test – nbinomWaldTest()
+```{r}
+dds <- nbinomWaldTest(dds)
+```
+Use the DESeq() function to perform steps 5-7 (Size factors, dispersion, GLM/WALD) in one go.
+We will make a remake the object
+```{r}
+dds <- DESeqDataSetFromMatrix(counts_table, sample_table, ~egr_ko_cell)
+dds <- DESeq(dds)
+
+```
+?Access the coefficients of the NB GLM
+```{r}
+coef_output <- coef(dds)
+head(coef_output)
+```
+10. Access the results table for the comparison between CD8+ and
+CD4+ T cells from Egr2/3 DKO mice
+Ø Table should contain log2 fold changes and p-values for all genes
+```{r}
+View(as.data.frame(colData(dds)))
+p_values <- results(dds, c("egr_ko_cell","Egr2/3_DKO_CD8","Egr2/3_DKO_CD4"))
+p_values_as_df <- as.data.frame(p_values)
+```
+
+11. Plot a histogram of the raw and BH-adjusted p-values – do they look
+as expected?
+
+First we will do a padjusted graph
+```{r}
+p_adj_histogram <- ggplot(p_values_as_df, aes(x=padj))+
+    geom_histogram()
+p_adj_histogram
+```
+
+```{r}
+p_histogram <- ggplot(p_values_as_df, aes(x=pvalue))+
+    geom_histogram()
+p_histogram
+```
+COmbine the above 2 plots
+```{r}
+library(cowplot)
+plot_grid(p_histogram, p_adj_histogram)
+```
+12. Generate an MA plot of the log2 FC values for all genes
+Use th eplot MA function for this.
+MA-plot from base means and log fold changes
+
+```{r}
+plotMA(p_values)
+```
+Each point is a gene on this graph (mean expresison of cd4 and log2fold of the cd4. 
+This is the cd4 double knockout vs the cd8 double knockouts
+The blue values are the more relavent
+
+
+13. Shrink the log2 FC values using the normal, apeglm and ashr
+methods
+```{r}
+dds_normal <- lfcShrink(dds, contrast = c("egr_ko_cell","Egr2/3_DKO_CD8","Egr2/3_DKO_CD4"), type = "normal")
+resultsNames(dds) #
+
+dds_apeglm <- lfcShrink(dds, coef =  c("egr_ko_cell_Egr2.3_DKO_CD4_vs_Egr2.3_DKO_CD8"), type = "apeglm")
+dds_ashr <- lfcShrink(dds, contrast = c("egr_ko_cell","Egr2/3_DKO_CD8","Egr2/3_DKO_CD4"), type = "ashr")
+
+plot_grid(dds_apeglm, dds_ashr, dds_ashr)
+```
+
+```{r}
+plotMA(dds_normal)
+p1 <- recordPlot()    # save current plot in R variable
+
+plotMA(dds_apeglm)
+p2 <- recordPlot()
+
+plotMA(dds_ashr)
+p3 <- recordPlot()
+
+plot_grid(p1, p2, p3, ncol = 3)
+```
+
+
+
+Generate a results table (one shrinkage method) containing mgi
+symbols
+Ø Use the org.Mm.eg.db package
+Ø Remove all genes with a padj of NA
+Ø How many Ensembl IDs are not assigned an mgi symbol and how many mgi
+symbols are duplicated?
+```{r}
+library(org.Mm.eg.db)
+#Use one of the tables with the shrunken p-values
+View(dds_apeglm)
+dds_apeglem_res <- as.data.frame(dds_apeglm)
+#ABove gives us the the table. 
+```
+
+Now remove NAs from padj value. So first select were padj = NA with is.na
+
+```{r}
+dds_apeglem_res_na <- dds_apeglem_res %>% filter(!is.na(padj))
+dim(dds_apeglem_res_na)
+dim(dds_apeglem_res)
+```
+Use the mapIds function
+#mapIds(x, keys, column, keytype, ..., multiVals)
+# x is the database of IDs the function will look into org.Mm.eg.db 
+#Keys is the ensemble id you wan to change i.e. rownames
+```{r}
+keytypes(org.Mm.eg.db) # our keytypes are out ensemble
+#we have the ensemble keytypes in the dataframe
+# we want to link this to gene name 'SYMBOL'
+
+temp <- mapIds(org.Mm.eg.db, rownames(dds_apeglem_res_na), column = 'SYMBOL', keytype = 'ENSEMBL')
+head(temp)
+
+#Next step is to make a data frame
+dds_apeglem_res_na_geneid <- as.data.frame(temp)
+View(dds_apeglem_res_na_geneid)
+
+#Make a new column in this data.frame with both of our last two table and then join htem together
+#put the row 
+dds_apeglem_res_na_geneid$ENSEMBL_ID <- rownames(dds_apeglem_res_na_geneid)
+dds_apeglem_res_na$ENSEMBL_ID <- rownames(dds_apeglem_res_na_geneid)
+View(dds_apeglem_res_na)
+View(dds_apeglem_res_na_geneid)
+#Use left join to merge the two tables
+dds_apeglem_res_final <- left_join(dds_apeglem_res_na_geneid, dds_apeglem_res_na, by = "ENSEMBL_ID")
+View(dds_apeglem_res_final)
+```
+
+16. Write the results to a csv file
+```{r}
+write.csv(dds_apeglem_res_final, file = "DE_Results.csv")
+```
+
+17. Filter the results table for padj <0.05 and absolute log2 FC >1
+```{r}
+dds_apeglem_padjlog2 <- dds_apeglem_res_final %>%
+  filter(log2FoldChange >1 & padj <0.05)
+View(dds_apeglem_padjlog2)
+```
+
+18. 
+
+
+

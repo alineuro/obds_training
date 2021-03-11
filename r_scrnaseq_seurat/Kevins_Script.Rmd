@@ -1,0 +1,307 @@
+---
+title: "Kevins_Markdown"
+author: "amjad"
+date: "08/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "Kevin's solution"
+author: "Kevin Rue-Albrecht"
+date: "08/03/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Start of the exercise
+
+
+```{r}
+library(Seurat)
+```
+
+
+```{r}
+seurat.data <- Read10X(data.dir = "filtered_feature_bc_matrix/")
+```
+
+
+```{r}
+rownames(x = seurat.data[["Antibody Capture"]]) <- gsub(
+    pattern = "_[control_]*TotalSeqB",
+    replacement = "",
+    x = rownames(x = seurat.data[["Antibody Capture"]]))
+rownames(x = seurat.data[["Antibody Capture"]])
+```
+
+
+```{r}
+seurat_rna_all <- CreateSeuratObject(counts = seurat.data$`Gene Expression`, project = "pbmc_5k")
+seurat_rna_all
+```
+
+
+```{r}
+head(colnames(seurat_rna_all))
+```
+
+
+```{r}
+dim(seurat_rna_all@meta.data)
+```
+
+
+```{r}
+head(seurat_rna_all@meta.data)
+```
+
+
+```{r}
+table(seurat_rna_all@meta.data$orig.ident)
+```
+
+
+```{r}
+slotNames(seurat_rna_all)
+seurat_rna_all@version
+```
+
+
+```{r}
+seurat_rna_all@meta.data$nCount_RNA_log10 <- log10(seurat_rna_all@meta.data$nCount_RNA)
+head(seurat_rna_all@meta.data)
+```
+
+
+```{r}
+head(Idents(seurat_rna_all))
+```
+
+
+```{r}
+adt_assay <- CreateAssayObject(seurat.data[["Antibody Capture"]][, colnames(seurat_rna_all)])
+adt_assay
+class(adt_assay)
+```
+
+
+```{r}
+head(seurat_rna_all@meta.data)
+```
+
+
+```{r}
+seurat_rna_all[["ADT"]] <- adt_assay
+seurat_rna_all
+```
+
+
+```{r}
+head(seurat_rna_all@meta.data)
+```
+
+
+```{r}
+seurat_rna_all <- NormalizeData(seurat_rna_all)
+seurat_rna_all
+```
+
+
+```{r}
+# seurat_rna_all@assays$RNA@counts
+# seurat_rna_all@assays$RNA@data
+identical(seurat_rna_all@assays$RNA@counts, seurat_rna_all@assays$RNA@data)
+# seurat_rna_all@assays$ADT@counts
+# seurat_rna_all@assays$ADT@data
+identical(seurat_rna_all@assays$ADT@counts, seurat_rna_all@assays$ADT@data)
+```
+
+
+```{r}
+seurat_rna_all <- NormalizeData(seurat_rna_all, assay = "ADT", normalization.method = "CLR")
+seurat_rna_all
+```
+
+
+```{r}
+grep("^MT-", rownames(seurat_rna_all), value = TRUE)
+```
+
+
+
+
+```{r}
+mt.percent <- PercentageFeatureSet(seurat_rna_all, pattern = "^MT-")
+class(mt.percent)
+mt.percent
+```
+
+
+```{r}
+seurat_rna_all[["percent.mt"]] <- mt.percent
+seurat_rna_all
+```
+
+
+```{r}
+head(seurat_rna_all@meta.data)
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(seurat_rna_all@meta.data, aes(nCount_RNA, nFeature_RNA, color = percent.mt)) +
+    geom_point()
+```
+
+
+
+
+```{r}
+ggplot(seurat_rna_all@meta.data, aes(percent.mt)) +
+    geom_histogram()
+```
+
+
+```{r}
+VlnPlot(seurat_rna_all, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+
+```{r}
+seurat_rna_all <- subset(seurat_rna_all, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 20)
+```
+
+
+```{r}
+seurat_rna_all <- FindVariableFeatures(seurat_rna_all)
+seurat_rna_all
+```
+
+
+```{r}
+length(VariableFeatures(seurat_rna_all))
+top10 <- head(VariableFeatures(seurat_rna_all), 10)
+top10
+```
+
+
+```{r}
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(seurat_rna_all)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+```
+
+
+```{r}
+all.genes <- rownames(seurat_rna_all)
+# head(all.genes)
+seurat_rna_all <- ScaleData(seurat_rna_all, features = all.genes)
+seurat_rna_all
+```
+
+
+```{r}
+DefaultAssay(seurat_rna_all)
+```
+
+
+```{r}
+seurat_rna_all <- RunPCA(seurat_rna_all)
+```
+
+
+```{r}
+seurat_rna_all
+```
+
+
+```{r}
+seurat_rna_all[["pca"]]
+seurat_rna_all@reductions$pca
+```
+
+
+```{r}
+print(seurat_rna_all[["pca"]], dims = 1:5, nfeatures = 5)
+```
+
+
+```{r}
+DimPlot(seurat_rna_all, reduction = "pca", dims = c(1, 2))
+```
+
+
+```{r}
+DimHeatmap(seurat_rna_all, dims = 14)
+```
+
+
+```{r}
+ElbowPlot(seurat_rna_all)
+```
+
+
+```{r}
+seurat_rna_all <- FindNeighbors(seurat_rna_all, dims = 1:13)
+seurat_rna_all
+```
+
+
+```{r}
+seurat_rna_all <- FindClusters(seurat_rna_all, resolution = 0.8, verbose = FALSE)
+seurat_rna_all <- FindClusters(seurat_rna_all, resolution = 1.2, verbose = FALSE)
+```
+
+
+```{r}
+View(seurat_rna_all@meta.data)
+```
+
+
+```{r}
+head(Idents(seurat_rna_all))
+```
+
+
+```{r}
+table(seurat_rna_all@meta.data$RNA_snn_res.0.8)
+```
+
+
+```{r}
+DimPlot(seurat_rna_all, reduction = "pca", dims = c(1, 2))
+```
+
+
+```{r}
+Idents(seurat_rna_all) <- seurat_rna_all@meta.data$RNA_snn_res.0.8
+DimPlot(seurat_rna_all, reduction = "pca", dims = c(1, 2))
+```
+
+
+```{r}
+DimPlot(seurat_rna_all, reduction = "pca", dims = c(1, 2), group.by = "RNA_snn_res.1.2")
+```
+
+
+```{r}
+seurat_rna_all <- RunUMAP(seurat_rna_all, reduction = "pca", dims = 1:13)
+seurat_rna_all
+```
+
+
+```{r}
+DimPlot(seurat_rna_all, reduction = "umap", dims = c(1, 2), group.by = "RNA_snn_res.0.8")
+```
+

@@ -1,0 +1,142 @@
+---
+title: "ggplot2_exercise"
+author: "amjad"
+date: "24/02/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+```
+```{r}
+ggplot(diamonds)
+```
+```{r}
+ggplot(diamonds, aes(x = carat, y = price))
+```
+```{r}
+ggplot(diamonds, aes(x = carat, y = price))+
+    geom_point()
+```
+```{r}
+ggplot(diamonds, aes(x = carat, y = price, color=cut))+
+    geom_point()
+```
+Follow the mean of the data point
+```{r}
+ggplot(diamonds, aes(x = carat, y = price, colour = cut)) +
+ geom_point() +
+ geom_smooth()
+
+```
+Make into a single line. Uses a method called gam to fit the line. 
+```{r}
+ggplot(diamonds, aes(x = carat, y = price)) +
+ geom_point(aes(colour = cut)) +
+ geom_smooth()
+
+```
+Edit the theme i.e. axis tick/text/background. So we have to make a new function for this. 
+```{r}
+base_plot +
+ labs(title = "Diamond price and carat values",
+ x = "Carat", y = "Price") +
+ theme(axis.title = element_text(size = 16, face = "bold"),
+ axis.text = element_text(size = 14),
+ plot.title = element_text(hjust = 0.5, size = 20))
+
+
+```
+```{r}
+ChickWeight
+```
+Working with new dataset 'ChickWeight'
+Plot a histogram
+#geom_histogram() - histogram, requires x (continuous)
+
+ggplot(diamonds, aes(x = carat, y = price, colour = cut)) +
+ geom_point() +
+ geom_smooth()
+```{r}
+ggplot(ChickWeight,aes(x = weight) ) + 
+geom_histogram()
+```
+Change fill and border
+```{r}
+ggplot(ChickWeight,aes(x = weight) ) + 
+geom_histogram(fill = "grey", color = "black")
+```
+```{r}
+ggplot(ChickWeight,aes(x = weight) ) + 
+geom_histogram(fill = "grey", color = "black", binwidth = 100)
+```
+Above we can change the binwidth or the no. of bins. Cant have both.
+Change the label and font size of the axes.
+
+```{r}
+ggplot(ChickWeight,aes(x = weight) ) + 
+geom_histogram(fill = "grey", color = "black", binwidth = 10) +
+labs(x = 'chick weight', y = 'Number of Chicks', title = 'Histogram of chick weight', subtitle = 'chickweight data set') +
+theme(axis.title = element_text(size = 16, face = 'bold'), axis.text.x = element_text(size = 14, angle = 30, hjust = 0, color = 'red'))
+```
+Change the y-axis upper limit to an arbitrary number, e.g. 100
+
+```{r}
+ggplot(ChickWeight,aes(x = weight) ) + 
+geom_histogram(fill = "grey", color = "black", binwidth = 10) +
+labs(x = 'chick weight', y = 'Number of Chicks', title = 'Histogram of chick weight', subtitle = 'chickweight data set') +
+theme(axis.title = element_text(size = 16, face = 'bold'), axis.text.x = element_text(size = 14, angle = 30, hjust = 0, color = 'red')) + 
+    ylim(0,100)
+```
+SPlit data in to the four diets
+
+```{r}
+ggplot(ChickWeight,aes(x = weight) ) + 
+geom_histogram(fill = "grey", color = "black", binwidth = 10) +
+labs(x = 'chick weight', y = 'Number of Chicks', title = 'Histogram of chick weight', subtitle = 'chickweight data set') +
+theme(axis.title = element_text(size = 16, face = 'bold'), axis.text.x = element_text(size = 14, angle = 30, hjust = 0, color = 'red')) + 
+    ylim(0,25) +
+    facet_wrap(~Diet, nrow = 4)
+
+```
+Color each diet in a different color. So we are mapping data to a plot feature
+```{r}
+ggplot(ChickWeight,aes(x = weight, fill = Diet) ) + 
+geom_histogram(color = 'black', binwidth = 5) +
+labs(x = 'chick weight', y = 'Number of Chicks', title = 'Histogram of chick weight', subtitle = 'chickweight data set') +
+theme(axis.title = element_text(size = 16, face = 'bold'), axis.text.x = element_text(size = 14, angle = 30, hjust = 0, color = 'red')) + 
+    ylim(0,25) +
+    facet_wrap(~Diet, nrow = 4)
+```
+Allow y axis to adapt to the range in each diet. Facet_wrap. 
+
+```{r}
+ggplot(ChickWeight,aes(x = weight, fill = Diet) ) + 
+geom_histogram(color = 'black', binwidth = 5) +
+labs(x = 'chick weight', y = 'Number of Chicks', title = 'Histogram of chick weight', subtitle = 'chickweight data set') +
+theme(axis.title = element_text(size = 16, face = 'bold'), axis.text.x = element_text(size = 14, angle = 30, hjust = 0, color = 'red')) + 
+    facet_wrap(~Diet, ncol = 1)
+```
+Create a scatter plot of weight (y-axis) over time (x-axis)
+Add colour
+Add mean trend 
+Which diet leads to the highest mean increase in weight?
+Collate that last plot with the last histogram in the previous exercise.
+Label the panels "A" and "B".
+
+```{r}
+ggplot(ChickWeight,aes(x = Time, y = weight, color = Diet) )+
+    geom_point() +
+    geom_smooth(method=lm)
+    
+
+```
+
+```{r}
+collate 
+```
+

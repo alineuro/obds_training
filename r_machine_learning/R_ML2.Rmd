@@ -1,0 +1,53 @@
+---
+title: "ML_exercise2"
+author: "amjad"
+date: "02/03/2021"
+output: html_document
+---
+
+```{r}
+library(caret)
+```
+
+```{r}
+set.seed(998)
+inTraining <- createDataPartition(iris$Species, p = .75, list = FALSE)
+training <- iris[ inTraining,]
+testing <- iris[-inTraining,]
+
+dim(iris)
+dim(training)
+114/150
+
+table(training$species)
+
+species_sample <- sample(iris$Species, 114)
+length(species_sample)
+
+```
+Line 33: number of subsamples i.e. flowers we are giving to the training sample
+Line 36: these numbers say I want you to consider using 1 neighbour, 2 neighbours etc. This is done five times each
+
+```{r}
+renv::install("e1071")
+library(e1071)
+
+fitControl <- trainControl(method = "boot",number = 5)
+
+knnFit <- train(Species ~ ., data = training, method = "knn", trControl = fitControl, tuneGrid = data.frame(k = c(1,2,5,10,20)))
+                
+ggplot(knnFit)
+```
+```{r}
+knnPred <- predict(knnFit, newdata = testing)
+```
+
+```{r}
+confusionMatrix(data = knnPred, testing$Species)$table
+```
+
+```{r}
+confusionMatrix(data = knnPred, testing$Species)$overall["Accuracy"]
+
+```
+

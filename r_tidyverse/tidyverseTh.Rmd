@@ -1,0 +1,196 @@
+---
+title: "Thursday"
+author: "amjad"
+date: "25/02/2021"
+output: html_document
+---
+
+## R Markdown
+
+```{r}
+getwd()
+counts_table <- read_tsv("data/obds_countstable.tsv.gz")
+View(counts_table)
+```
+
+```{r}
+sample_table <- read_tsv("data/obds_sampletable.tsv")
+View(sample_table)
+```
+```{r}
+counts_table_tidy <- counts_table%>%
+    pivot_longer(-Geneid, names_to = "samples", values_to = "count")
+View(counts_table_tidy)
+```
+
+With the above we have converted the coutns table in to three columns. All Geneids, then column 2=sample, column 3=count, for all 12 ids
+
+Now join geneinfo to get mgi_symbol
+Use biomart
+
+```{r}
+library(biomaRt)
+#Download the database. We are loading the data base into a variable called ensembl
+ensembl <- useMart("ensembl")
+#Get a list of datasets to work out which one to use. I.e. we are lisiting all the samples. 
+listDatasets(ensembl)
+#load the mosue database. So we are making the databse again but only with the mouse info we have selected. 
+ensembl <- useMart("ensembl",dataset="mmusculus_gene_ensembl")
+#See which attributes/ensemble IDs are avaialble
+listAttributes(ensembl)
+#So we want to macth the ensemble_gene_id (form our table) to mgi_symbol
+# now we need to write a query function
+# retrive both to know the pairs
+gene_names <- getBM(c("ensembl_gene_id","mgi_symbol"), filters = "ensembl_gene_id", values = counts_table$Geneid, mart = ensembl)
+View(gene_names)
+
+```
+Now join with the other table i.e counts_table_tidy with gene_names
+First check for duplicates. 
+
+```{r}
+length(unique(gene_names$ensembl_gene_id))
+nrow(gene_names)
+```
+
+Join the tables now, make sure the columns are named the same with the 'by' function
+
+```{r}
+counts_table_tidy <- counts_table_tidy%>%
+    left_join(gene_names, by = c("Geneid" = "ensembl_gene_id"))
+#Are there any unanmed genes
+sum(is.na(counts_table_tidy$mgi_symbol))/12
+
+```
+Tidy the metadata file
+
+
+```{r}
+sample_table <- sample_table %>%
+  separate(sample_title, c("gene_name","gene_condition", "cell_type","replicate_number"), sep = "_")
+
+sample_table <- sample_table %>% 
+  unite(col = genotype, gene_name, gene_condition, sep = "_")
+
+sample_table <- sample_table %>%
+  dplyr::select(-species, -library_layout)
+View(sample_table)
+```
+
+Add metadata to table with counts and gene info
+```{r}
+View(counts_table_tidy)
+View(sample_table)
+counts_table_tidy <- counts_table_tidy %>% 
+    left_join(sample_table, by = c("samples" = "Sample_accession"))
+```
+
+We express counts per sample as the number of counts per sample. How many cpm is there for each of these genes. 
+Use mutate function. Mutate(New coloum called cpm containing....)
+
+```{r}
+counts_table_tidy <- counts_table_tidy%>%
+  mutate(CPM = count*1000000/read_count)
+```
+
+Also calculate log2(CPM +1)
+```{r}
+counts_table_tidy <- counts_table_tidy%>%
+  mutate(log_transformed = log2(CPM + 1))
+```
+
+Remove some rows (CPM, log transformed and read count). We are removing them as we have accidently been given the answer
+To select the right columns we have to use dplyr
+```{r}
+counts_table_tidy <- counts_table_tidy %>%
+  dplyr::select(Geneid:replicate_number)
+View(temp)
+```
+
+```{r}
+counts_table_tidy <- counts_table_tidy %>%
+  group_by(samples)%>%
+  mutate(total_counts = sum(count))
+View(temp)
+
+#Check if ther are 12 unique counts
+unique(temp$total_counts)
+```
+```{r}
+counts_table_tidy <- counts_table_tidy %>%
+  mutate(CPM = count*1000000/total_counts)
+```
+
+```{r}
+counts_table_tidy <- counts_table_tidy %>%
+  mutate(log_transformed = log2(CPM + 1))
+
+```
+
+
+```{r}
+plotting_table <- counts_table_tidy %>%
+  group_by(samples) %>%
+  summarise(total_counts = sum(count))
+plotting_table
+
+plot1 <- ggplot(plotting_table, aes(x = samples, y = total_counts)) +
+                geom_col()+
+theme(axis.title = element_text(size = 8, face = 'bold'), axis.text.x = element_text(size = 8, angle = 30, hjust = 1, color = 'red'))
+plot1
+```
+Summarise by gene
+a) How many genes have no counts for any sample?
+```{r}
+temp <- counts_table_tidy %>%
+  group_by(mgi_symbol) %>%
+  summarise(total_counts_per_gene = sum(count)) %>%
+  filter(total_counts_per_gene == 0) %>%
+  tally()
+
+```
+b) Draw a density plot of log2(CPM + 1) for all genes
+```{r}
+plot2 <- plot1 <- ggplot(counts_table_tidy, aes(x = log_transformed, col = samples))+
+  geom_density()+
+  theme(axis.text.x = element_text(size = 10, angle = 90, hjust = 1, color = 'red'))
+plot2
+  
+```
+Filter out genes that have low expression in 3 or fewer samples
+
+```{r}
+filtered_genes <- counts_table_tidy %>%
+  group_by(Geneid) %>%
+  filter(CPM >= 0.5) %>% #filter out genes with <0.5 count
+  tally() %>%
+  filter(n > 3)%>%
+  pull(Geneid)
+filtered_genes
+```
+
+Make a density plot of log2(CPM + 1) with the ltered data
+
+```{r}
+filtered_counts_table <- counts_table_tidy %>%
+  filter(Geneid %in% filtered_genes)
+nrow(filtered_counts_table)
+nrow(counts_table_tidy)
+```
+
+```{r}
+temp <- counts_table_tidy %>%
+  group_by(Geneid) %>%
+  filter(sum(CPM>=0.5)>3)
+
+```
+
+
+```{r}
+plot3 <- ggplot(filtered_counts_table, aes(x = log_transformed, col = samples))+
+  geom_density()+
+  theme(axis.text.x = element_text(size = 10, angle = 90, hjust = 1, color = 'red'))
+plot3
+  
+```
+
